@@ -162,10 +162,14 @@ async function getDataDump(
                 const where = options.where[table.name]
                     ? ` WHERE ${options.where[table.name]}`
                     : '';
-                const query = connection.query(
+
+                const insertFunc = options.insert
+                    ? `${options.insert} `
+                    : 'INSERT';
+
+                const query = conn_pool.query(
                     `SELECT * FROM \`${table.name}\`${where}`,
                 );
-
                 let rowQueue: Array<string> = [];
 
                 // stream the data to the file
@@ -176,7 +180,7 @@ async function getDataDump(
                     // if we've got a full queue
                     if (rowQueue.length === options.maxRowsPerInsertStatement) {
                         // create and write a fresh statement
-                        const insert = buildInsert(table, rowQueue, format);
+                        const insert = buildInsert(table, rowQueue, format, insertFunc);
                         saveChunk(insert);
                         rowQueue = [];
                     }
@@ -184,7 +188,7 @@ async function getDataDump(
                 query.on('end', () => {
                     // write the remaining rows to disk
                     if (rowQueue.length > 0) {
-                        const insert = buildInsert(table, rowQueue, format);
+                        const insert = buildInsert(table, rowQueue, format, insertFunc);
                         saveChunk(insert);
                         rowQueue = [];
                     }
