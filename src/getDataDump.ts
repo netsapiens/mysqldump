@@ -134,14 +134,20 @@ async function getDataDump(
                 // add a newline before the next header to pad the dumps
                 saveChunk('');
             }
+            
 
             if (options.verbose) {
                 // write the table header to the file
+
+                const where = options.where[table.name]
+                    ? ` WHERE ${options.where[table.name]}`
+                    : '';
+                    
                 const header = [
                     '# ------------------------------------------------------------',
                     `# DATA DUMP FOR TABLE: ${table.name}${
-                        options.lockTables ? ' (locked)' : ''
-                    }`,
+                        options.lockTables ? ' (locked)' : ''}`,
+                    `# ${where}`,
                     '# ------------------------------------------------------------',
                     '',
                 ];
