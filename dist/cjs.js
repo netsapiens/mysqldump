@@ -521,9 +521,9 @@ function typeCast(tables) {
     };
 }
 
-function buildInsert(table, values, format$$1) {
+function buildInsert(table, values, format$$1, insert) {
     const sql = format$$1([
-        `INSERT INTO \`${table.name}\` (\`${table.columnsOrdered.join('`,`')}\`)`,
+        `${insert} INTO \`${table.name}\` (\`${table.columnsOrdered.join('`,`')}\`)`,
         `VALUES ${values.join(',')};`,
     ].join(' '));
     // sql-formatter lib doesn't support the X'aaff' or b'01010' literals, and it adds a space in and breaks them
@@ -533,8 +533,8 @@ function buildInsert(table, values, format$$1) {
 function buildInsertValue(row, table) {
     return `(${table.columnsOrdered.map(c => row[c]).join(',')})`;
 }
-function executeSql(connection, sql) {
-    return new Promise((resolve, reject) => connection.query(sql, err => err ? /* istanbul ignore next */ reject(err) : resolve()));
+function executeSql(pool, sql) {
+    return new Promise((resolve, reject) => pool.query(sql, err => err ? /* istanbul ignore next */ reject(err) : resolve()));
 }
 // eslint-disable-next-line complexity
 function getDataDump(connectionOptions, options, tables, dumpToFile) {
@@ -547,8 +547,8 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
         const format$$1 = options.format
             ? (sql) => sqlformatter.format(sql)
             : (sql) => sql;
-        // we open a new connection with a special typecast function for dumping data
-        const connection = mysql.createConnection(deepmerge.all([
+        // we open a new pool with a special typecast function for dumping data
+        const conn_pool = mysql.createPool(deepmerge.all([
             connectionOptions,
             {
                 multipleStatements: true,
@@ -579,9 +579,9 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
         }
         try {
             if (options.lockTables) {
-                // see: https://dev.mysql.com/doc/refman/5.7/en/replication-solutions-backups-read-only.html
-                yield executeSql(connection, 'FLUSH TABLES WITH READ LOCK');
-                yield executeSql(connection, 'SET GLOBAL read_only = ON');
+                // // see: https://dev.mysql.com/doc/refman/5.7/en/replication-solutions-backups-read-only.html
+                yield executeSql(conn_pool, 'FLUSH TABLES WITH READ LOCK');
+                yield executeSql(conn_pool, 'SET GLOBAL read_only = ON');
             }
             // to avoid having to load an entire DB's worth of data at once, we select from each table individually
             // note that we use async/await within this loop to only process one table at a time (to reduce memory footprint)
@@ -606,9 +606,13 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
                 }
                 if (options.verbose) {
                     // write the table header to the file
+                    const where = options.where[table.name]
+                        ? ` WHERE ${options.where[table.name]}`
+                        : '';
                     const header = [
                         '# ------------------------------------------------------------',
                         `# DATA DUMP FOR TABLE: ${table.name}${options.lockTables ? ' (locked)' : ''}`,
+                        `# ${where}`,
                         '# ------------------------------------------------------------',
                         '',
                     ];
@@ -620,7 +624,10 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
                     const where = options.where[table.name]
                         ? ` WHERE ${options.where[table.name]}`
                         : '';
-                    const query = connection.query(`SELECT * FROM \`${table.name}\`${where}`);
+                    const insertFunc = options.insert
+                        ? `${options.insert} `
+                        : 'INSERT';
+                    const query = conn_pool.query(`SELECT * FROM \`${table.name}\`${where}`);
                     let rowQueue = [];
                     // stream the data to the file
                     query.on('result', (row) => {
@@ -629,7 +636,7 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
                         // if we've got a full queue
                         if (rowQueue.length === options.maxRowsPerInsertStatement) {
                             // create and write a fresh statement
-                            const insert = buildInsert(table, rowQueue, format$$1);
+                            const insert = buildInsert(table, rowQueue, format$$1, insertFunc);
                             saveChunk(insert);
                             rowQueue = [];
                         }
@@ -637,7 +644,7 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
                     query.on('end', () => {
                         // write the remaining rows to disk
                         if (rowQueue.length > 0) {
-                            const insert = buildInsert(table, rowQueue, format$$1);
+                            const insert = buildInsert(table, rowQueue, format$$1, insertFunc);
                             saveChunk(insert);
                             rowQueue = [];
                         }
@@ -661,12 +668,13 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
         finally {
             if (options.lockTables) {
                 // see: https://dev.mysql.com/doc/refman/5.7/en/replication-solutions-backups-read-only.html
-                yield executeSql(connection, 'SET GLOBAL read_only = OFF');
-                yield executeSql(connection, 'UNLOCK TABLES');
+                yield executeSql(conn_pool, 'SET GLOBAL read_only = OFF');
+                yield executeSql(conn_pool, 'UNLOCK TABLES');
             }
+            conn_pool.end(); // close the connection pool 
         }
         // clean up our connections
-        yield connection.end();
+        // await ((connection.end() as unknown) as Promise<void>);
         if (outFileStream) {
             // tidy up the file stream, making sure writes are 100% flushed before continuing
             yield new Promise(resolve => {
@@ -684,14 +692,21 @@ function compressFile(filename) {
     const tempFilename = `${filename}.temp`;
     fs.renameSync(filename, tempFilename);
     const deleteFile = (file) => {
-        try {
-            if (fs.existsSync(file)) {
-                fs.unlinkSync(file);
+        setTimeout(function () {
+            try {
+                if (!fs.existsSync(file)) {
+                    return;
+                }
+                if (fs.existsSync(file)) {
+                    fs.unlinkSync(file);
+                }
             }
-        }
-        catch (_err) {
-            /* istanbul ignore next */
-        }
+            catch (_err) {
+                if (_err.code !== 'ENOENT')
+                    throw _err;
+                /* istanbul ignore next */
+            }
+        }, 100);
     };
     try {
         const read = fs.createReadStream(tempFilename);
@@ -721,22 +736,26 @@ function compressFile(filename) {
     }
 }
 
-const pool = [];
+const poolArr = [];
 class DB {
     // can only instantiate via DB.connect method
-    constructor(connection) {
-        this.connection = connection;
+    constructor(pool) {
+        //debugger;
+        this.pool = pool;
     }
     static connect(options) {
         return __awaiter(this, void 0, void 0, function* () {
-            const instance = new DB(yield mysql$1.createConnection(options));
-            pool.push(instance);
-            return instance;
+            if (poolArr.length > 0) {
+                return poolArr[0];
+            }
+            const pool = new DB(mysql$1.createPool(options));
+            poolArr.push(pool);
+            return pool;
         });
     }
     query(sql) {
         return __awaiter(this, void 0, void 0, function* () {
-            const res = yield this.connection.query(sql);
+            const res = yield this.pool.query(sql);
             return res[0];
         });
     }
@@ -746,7 +765,7 @@ class DB {
             if (sql.split(';').length === 2) {
                 isMulti = false;
             }
-            let res = (yield this.connection.query(sql))[0];
+            let res = (yield this.pool.query(sql))[0];
             if (!isMulti) {
                 // mysql will return a non-array payload if there's only one statement in the query
                 // so standardise the res..
@@ -754,18 +773,6 @@ class DB {
                 res = [res];
             }
             return res;
-        });
-    }
-    end() {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield this.connection.end().catch(() => { });
-        });
-    }
-    static cleanup() {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield Promise.all(pool.map((p) => __awaiter(this, void 0, void 0, function* () {
-                yield p.end();
-            })));
         });
     }
 }
@@ -836,6 +843,7 @@ const defaultOptions = {
             lockTables: false,
             includeViewData: false,
             where: {},
+            insert: "INSERT",
             returnFromFunction: false,
             maxRowsPerInsertStatement: 1,
         },
@@ -923,7 +931,7 @@ function main(inputOptions) {
                     .trim();
             }
             // data dump uses its own connection so kill ours
-            yield connection.end();
+            //await connection.end();
             // dump data if requested
             if (options.dump.data !== false) {
                 // don't even try to run the data dump
@@ -950,7 +958,7 @@ function main(inputOptions) {
             return res;
         }
         finally {
-            DB.cleanup();
+            //DB.cleanup();
         }
     });
 }
