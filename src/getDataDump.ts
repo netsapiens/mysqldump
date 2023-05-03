@@ -15,10 +15,12 @@ function buildInsert(
     table: Table,
     values: Array<string>,
     format: (s: string) => string,
+    insert: string,
 ): string {
+
     const sql = format(
         [
-            `INSERT INTO \`${table.name}\` (\`${table.columnsOrdered.join(
+            `${insert} INTO \`${table.name}\` (\`${table.columnsOrdered.join(
                 '`,`',
             )}\`)`,
             `VALUES ${values.join(',')};`,
