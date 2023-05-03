@@ -7,13 +7,19 @@ function compressFile(filename: string): Promise<void> {
     fs.renameSync(filename, tempFilename);
 
     const deleteFile = (file: string): void => {
-        try {
-            if (fs.existsSync(file)) {
-              fs.unlinkSync(file);
-            }
-        } catch (_err) {
-            /* istanbul ignore next */
-        }
+            setTimeout(function(){
+            try {
+                if(!fs.existsSync(file)) {
+                    return;
+                }
+                if (fs.existsSync(file)) {
+                    fs.unlinkSync(file);    
+                }
+              } catch (_err) {
+                    if (_err.code !== 'ENOENT') throw _err;
+                  /* istanbul ignore next */
+              }
+            },100); 
     };
 
     try {
