@@ -193,6 +193,10 @@ export interface DataDumpOptions {
 	 */
 	returnFromFunction?: boolean;
 	/**
+	 * The insert tyep to use. INSERT is default. INSERT IGNORE and REPLACE are also supported.
+	 */
+	insert?: string;
+	/**
 	 * A map of tables to additional where strings to add.
 	 * Use this to limit the number of data that is dumped.
 	 * Defaults to no limits

@@ -196,6 +196,12 @@ interface DataDumpOptions {
      * Defaults to false if dumpToFile is truthy, or true if not dumpToFile is falsey.
      */
     returnFromFunction?: boolean;
+
+    /**
+     * The insert tyep to use. INSERT is default. INSERT IGNORE and REPLACE are also supported.
+     */
+    insert?: string;
+
     /**
      * A map of tables to additional where strings to add.
      * Use this to limit the number of data that is dumped.
