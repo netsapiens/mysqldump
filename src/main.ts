@@ -51,6 +51,7 @@ const defaultOptions: Options = {
             lockTables: false,
             includeViewData: false,
             where: {},
+            insert: "INSERT",
             returnFromFunction: false,
             maxRowsPerInsertStatement: 1,
         },
@@ -173,7 +174,7 @@ export default async function main(inputOptions: Options): Promise<DumpReturn> {
         }
 
         // data dump uses its own connection so kill ours
-        await connection.end();
+        //await connection.end();
 
         // dump data if requested
         if (options.dump.data !== false) {
@@ -209,7 +210,7 @@ export default async function main(inputOptions: Options): Promise<DumpReturn> {
 
         return res;
     } finally {
-        DB.cleanup();
+        //DB.cleanup();
     }
 }
 

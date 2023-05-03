@@ -35,9 +35,9 @@ function buildInsertValue(row: QueryRes, table: Table): string {
     return `(${table.columnsOrdered.map(c => row[c]).join(',')})`;
 }
 
-function executeSql(connection: mysql.Connection, sql: string): Promise<void> {
+function executeSql(pool: mysql.Pool, sql: string): Promise<void> {
     return new Promise((resolve, reject) =>
-        connection.query(sql, err =>
+        pool.query(sql, err =>
             err ? /* istanbul ignore next */ reject(err) : resolve(),
         ),
     );
@@ -64,8 +64,8 @@ async function getDataDump(
         ? (sql: string) => sqlformatter.format(sql)
         : (sql: string) => sql;
 
-    // we open a new connection with a special typecast function for dumping data
-    const connection = mysql.createConnection(
+    // we open a new pool with a special typecast function for dumping data
+    const conn_pool = mysql.createPool(
         merge([
             connectionOptions,
             {
@@ -74,6 +74,7 @@ async function getDataDump(
             },
         ]),
     );
+
 
     const retTables: Array<Table> = [];
     let currentTableLines: Array<string> | null = null;
@@ -104,9 +105,9 @@ async function getDataDump(
 
     try {
         if (options.lockTables) {
-            // see: https://dev.mysql.com/doc/refman/5.7/en/replication-solutions-backups-read-only.html
-            await executeSql(connection, 'FLUSH TABLES WITH READ LOCK');
-            await executeSql(connection, 'SET GLOBAL read_only = ON');
+            // // see: https://dev.mysql.com/doc/refman/5.7/en/replication-solutions-backups-read-only.html
+            await executeSql(conn_pool, 'FLUSH TABLES WITH READ LOCK');
+            await executeSql(conn_pool, 'SET GLOBAL read_only = ON');
         }
 
         // to avoid having to load an entire DB's worth of data at once, we select from each table individually
@@ -218,13 +219,15 @@ async function getDataDump(
     } finally {
         if (options.lockTables) {
             // see: https://dev.mysql.com/doc/refman/5.7/en/replication-solutions-backups-read-only.html
-            await executeSql(connection, 'SET GLOBAL read_only = OFF');
-            await executeSql(connection, 'UNLOCK TABLES');
+            await executeSql(conn_pool, 'SET GLOBAL read_only = OFF');
+            await executeSql(conn_pool, 'UNLOCK TABLES');
         }
+
+        conn_pool.end(); // close the connection pool 
     }
 
     // clean up our connections
-    await ((connection.end() as unknown) as Promise<void>);
+   // await ((connection.end() as unknown) as Promise<void>);
 
     if (outFileStream) {
         // tidy up the file stream, making sure writes are 100% flushed before continuing
