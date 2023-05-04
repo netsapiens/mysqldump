@@ -736,7 +736,7 @@ function compressFile(filename) {
     }
 }
 
-const poolArr = [];
+const poolArr = new Map();
 class DB {
     // can only instantiate via DB.connect method
     constructor(pool) {
@@ -745,12 +745,14 @@ class DB {
     }
     static connect(options) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (poolArr.length > 0) {
-                return poolArr[0];
+            const database = options.database || "SiPbxDomain";
+            if (poolArr.has(database)) {
+                // @ts-ignore: checked right before.
+                return poolArr.get(database);
             }
-            const pool = new DB(mysql$1.createPool(options));
-            poolArr.push(pool);
-            return pool;
+            poolArr.set(database, new DB(mysql$1.createPool(options)));
+            // @ts-ignore: checked right before.
+            return poolArr.get(database);
         });
     }
     query(sql) {

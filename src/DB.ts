@@ -1,6 +1,6 @@
 import * as mysql from 'mysql2/promise';
 
-const poolArr: Array<DB> = [];
+const poolArr: Map<String,DB> = new Map<string, DB>();
 
 class DB {
     private readonly pool: mysql.IPromisePool;
@@ -12,13 +12,16 @@ class DB {
     }
 
     public static async connect(options: mysql.IConnectionConfig): Promise<DB> {
-        if (poolArr.length > 0) {
-            return poolArr[0];
+        const database = options.database || "SiPbxDomain";
+        if (poolArr.has(database)) {
+            // @ts-ignore: checked right before.
+            return poolArr.get(database); 
         }
+
+        poolArr.set(database, new DB(mysql.createPool(options)));
+        // @ts-ignore: checked right before.
+        return poolArr.get(database); 
        
-        const pool = new DB(mysql.createPool(options));
-        poolArr.push(pool);
-        return pool;
     }
 
     public async query<T>(sql: string): Promise<Array<T>> {
