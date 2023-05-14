@@ -115,7 +115,8 @@ export default async function main(inputOptions: Options): Promise<DumpReturn> {
 
         // write the initial headers
         if (options.dumpToFile) {
-            fs.appendFileSync(options.dumpToFile, `${HEADER_VARIABLES}\n`);
+            // remove as breaking on mariadb on u22. 
+            //fs.appendFileSync(options.dumpToFile, `${HEADER_VARIABLES}\n`);
         }
 
         connection = await DB.connect(
