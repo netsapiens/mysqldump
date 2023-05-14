@@ -14,7 +14,7 @@ import { getDataDump } from './getDataDump';
 import { compressFile } from './compressFile';
 import { DB } from './DB';
 import { ERRORS } from './Errors';
-import { HEADER_VARIABLES, FOOTER_VARIABLES } from './sessionVariables';
+//import { HEADER_VARIABLES, FOOTER_VARIABLES } from './sessionVariables';
 
 const defaultOptions: Options = {
     connection: {
@@ -201,7 +201,8 @@ export default async function main(inputOptions: Options): Promise<DumpReturn> {
 
         // reset all of the variables
         if (options.dumpToFile) {
-            fs.appendFileSync(options.dumpToFile, FOOTER_VARIABLES);
+            // dont add variables, issues with mariab and u22
+            // fs.appendFileSync(options.dumpToFile, FOOTER_VARIABLES);
         }
 
         // compress output file
