@@ -120,6 +120,12 @@ async function getSchemaDump(
                     .replace(/\n {2}set/g, ' set')
                     .replace(/ {4}/g, '  ');
             }
+            else
+            {
+                
+                s.schema = s.schema.replace(/\n\n/g, '\n');
+                s.schema = s.schema.replace(/\n/g, ' ');
+            }
 
             // add a semicolon to separate schemas
             s.schema += ';';
@@ -132,7 +138,7 @@ async function getSchemaDump(
                 '',
                 s.schema,
                 '',
-            ].join('\n');
+            ].join(' ');
 
             return s;
         })

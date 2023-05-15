@@ -162,6 +162,10 @@ function getSchemaDump(connection, options, tables) {
                     .replace(/\n {2}set/g, ' set')
                     .replace(/ {4}/g, '  ');
             }
+            else {
+                s.schema = s.schema.replace(/\n\n/g, '\n');
+                s.schema = s.schema.replace(/\n/g, ' ');
+            }
             // add a semicolon to separate schemas
             s.schema += ';';
             // pad the sql with a header
@@ -172,7 +176,7 @@ function getSchemaDump(connection, options, tables) {
                 '',
                 s.schema,
                 '',
-            ].join('\n');
+            ].join(' ');
             return s;
         })
             .sort((a, b) => {
@@ -226,7 +230,7 @@ function getTriggerDump(connection, dbName, options, tables) {
             }
             // add the delimiter in case it's a multi statement trigger
             if (options.delimiter) {
-                sql = `DELIMITER ${options.delimiter}\n${sql}${options.delimiter}\nDELIMITER ;`;
+                sql = `DELIMITER ${options.delimiter} ${sql}${options.delimiter} DELIMITER ;`;
             }
             else {
                 // else just add a semicolon
@@ -236,6 +240,8 @@ function getTriggerDump(connection, dbName, options, tables) {
             if (options.dropIfExist) {
                 sql = `DROP TRIGGER IF EXISTS ${res.Trigger};\n${sql}`;
             }
+            sql = sql.replace(/\n\n/g, '\n');
+            sql = sql.replace(/\n/g, ' ');
             // add a header to the trigger
             sql = [
                 '# ------------------------------------------------------------',

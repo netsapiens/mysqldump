@@ -79,9 +79,9 @@ async function getTriggerDump(
 
             // add the delimiter in case it's a multi statement trigger
             if (options.delimiter) {
-                sql = `DELIMITER ${options.delimiter}\n${sql}${
+                sql = `DELIMITER ${options.delimiter} ${sql}${
                     options.delimiter
-                }\nDELIMITER ;`;
+                } DELIMITER ;`;
             } else {
                 // else just add a semicolon
                 sql = `${sql};`;
@@ -91,6 +91,9 @@ async function getTriggerDump(
             if (options.dropIfExist) {
                 sql = `DROP TRIGGER IF EXISTS ${res.Trigger};\n${sql}`;
             }
+
+            sql = sql.replace(/\n\n/g, '\n');
+            sql = sql.replace(/\n/g, ' ');
 
             // add a header to the trigger
             sql = [
