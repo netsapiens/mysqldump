@@ -138,7 +138,7 @@ async function getSchemaDump(
                 '',
                 s.schema,
                 '',
-            ].join(' ');
+            ].join('\n');
 
             return s;
         })

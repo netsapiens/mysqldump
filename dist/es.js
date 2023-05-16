@@ -176,7 +176,7 @@ function getSchemaDump(connection, options, tables) {
                 '',
                 s.schema,
                 '',
-            ].join(' ');
+            ].join('\n');
             return s;
         })
             .sort((a, b) => {
