@@ -897,6 +897,7 @@ function main(inputOptions) {
             connection = yield DB.connect(deepmerge.all([options.connection, { multipleStatements: true }]));
             // list the tables
             const res = {
+                status: 'ok',
                 dump: {
                     schema: null,
                     data: null,
@@ -952,8 +953,25 @@ function main(inputOptions) {
             }
             // compress output file
             if (options.dumpToFile && options.compressFile) {
+                if (!fs.existsSync(options.dumpToFile)) {
+                    res.status = 'error';
+                    return res;
+                }
                 yield compressFile(options.dumpToFile);
             }
+            return res;
+        }
+        catch (err) {
+            console.error(err.code + ' ' + err.message);
+            const res = {
+                status: 'error',
+                dump: {
+                    schema: null,
+                    data: null,
+                    trigger: null,
+                },
+                tables: [],
+            };
             return res;
         }
         finally {

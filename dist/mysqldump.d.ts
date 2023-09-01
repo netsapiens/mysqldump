@@ -303,6 +303,7 @@ export interface DumpReturn {
 	/**
 	 * The result of the dump
 	 */
+	status: 'ok' | 'error';
 	dump: {
 		/**
 		 * The concatenated SQL schema dump for the entire database.

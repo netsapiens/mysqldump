@@ -125,6 +125,7 @@ export default async function main(inputOptions: Options): Promise<DumpReturn> {
 
         // list the tables
         const res: DumpReturn = {
+            status: 'ok',
             dump: {
                 schema: null,
                 data: null,
@@ -207,9 +208,26 @@ export default async function main(inputOptions: Options): Promise<DumpReturn> {
 
         // compress output file
         if (options.dumpToFile && options.compressFile) {
+            if (!fs.existsSync(options.dumpToFile)) {
+                res.status = 'error';
+                return res;
+            }
             await compressFile(options.dumpToFile);
         }
 
+        return res;
+    }
+    catch (err) {
+        console.error(err.code + ' ' + err.message);
+        const res: DumpReturn = {
+            status: 'error',
+            dump: {
+                schema: null,
+                data: null,
+                trigger: null,
+            },
+            tables: [],
+        };
         return res;
     } finally {
         //DB.cleanup();
