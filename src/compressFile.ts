@@ -33,7 +33,7 @@ function compressFile(filename: string): Promise<void> {
 
     try {
         if (!fs.existsSync(tempFilename)) {
-            Promise.reject(`File ${tempFilename} does not exist.`);
+            return Promise.reject(`File ${tempFilename} does not exist.`);
         }
         const read = fs.createReadStream(tempFilename);
         const zip = zlib.createGzip();

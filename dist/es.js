@@ -720,7 +720,7 @@ function compressFile(filename) {
     };
     try {
         if (!existsSync(tempFilename)) {
-            Promise.reject(`File ${tempFilename} does not exist.`);
+            return Promise.reject(`File ${tempFilename} does not exist.`);
         }
         const read = createReadStream(tempFilename);
         const zip = createGzip();
