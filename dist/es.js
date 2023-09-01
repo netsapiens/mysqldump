@@ -704,9 +704,8 @@ function compressFile(filename) {
                 }
             }
             catch (_err) {
-                if (_err.code !== 'ENOENT')
-                    throw _err;
                 /* istanbul ignore next */
+                console.log(_err.code);
             }
         }, 100);
     };
@@ -730,12 +729,14 @@ function compressFile(filename) {
     catch (err) /* istanbul ignore next */ {
         // in case of an error: remove the output file and propagate the error
         deleteFile(filename);
-        throw err;
+        //throw err;
+        return Promise.reject(err);
     }
     finally {
         // in any case: remove the temp file
         deleteFile(tempFilename);
     }
+    
 }
 
 const poolArr = new Map();
