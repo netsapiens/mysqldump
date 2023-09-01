@@ -692,7 +692,16 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
 
 function compressFile(filename) {
     const tempFilename = `${filename}.temp`;
-    renameSync(filename, tempFilename);
+    if (!existsSync(filename)) {
+        return Promise.reject(`File ${filename} does not exist.`);
+    }
+    try {
+        renameSync(filename, tempFilename);
+    }
+    catch (err) {
+        /* istanbul ignore next */
+        return Promise.reject(err);
+    }
     const deleteFile = (file) => {
         setTimeout(function () {
             try {
@@ -710,6 +719,9 @@ function compressFile(filename) {
         }, 100);
     };
     try {
+        if (!existsSync(tempFilename)) {
+            Promise.reject(`File ${tempFilename} does not exist.`);
+        }
         const read = createReadStream(tempFilename);
         const zip = createGzip();
         const write = createWriteStream(filename);

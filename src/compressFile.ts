@@ -4,8 +4,17 @@ import * as zlib from 'zlib';
 function compressFile(filename: string): Promise<void> {
     const tempFilename = `${filename}.temp`;
 
-    fs.renameSync(filename, tempFilename);
-
+    if (!fs.existsSync(filename)) {
+        return Promise.reject(`File ${filename} does not exist.`);
+    }
+    try{
+        fs.renameSync(filename, tempFilename);
+    }
+    catch(err){
+        /* istanbul ignore next */
+        return Promise.reject(err);
+    }
+    
     const deleteFile = (file: string): void => {
             setTimeout(function(){
             try {
@@ -23,6 +32,9 @@ function compressFile(filename: string): Promise<void> {
     };
 
     try {
+        if (!fs.existsSync(tempFilename)) {
+            Promise.reject(`File ${tempFilename} does not exist.`);
+        }
         const read = fs.createReadStream(tempFilename);
         const zip = zlib.createGzip();
         const write = fs.createWriteStream(filename);
