@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as zlib from 'zlib';
 
-function compressFile(filename: string): Promise<void> {
+async function compressFile(filename: string): Promise<void> {
     const tempFilename = `${filename}.temp`;
 
     if (!fs.existsSync(filename)) {
@@ -35,7 +35,19 @@ function compressFile(filename: string): Promise<void> {
         if (!fs.existsSync(tempFilename)) {
             return Promise.reject(`File ${tempFilename} does not exist.`);
         }
+        
+        let had_error = false;
         const read = fs.createReadStream(tempFilename);
+        read.on('error', (err) => {
+            console.log('error ' + err);
+            had_error = true;
+        });
+        
+        await new Promise(r => setTimeout(r, 20));
+            
+        if (had_error) {
+            return Promise.reject(`Error reading ${tempFilename}.`);
+        }
         const zip = zlib.createGzip();
         const write = fs.createWriteStream(filename);
         read.pipe(zip).pipe(write);
@@ -54,8 +66,9 @@ function compressFile(filename: string): Promise<void> {
             });
         });
     } catch (err) /* istanbul ignore next */ {
+        console.error("compressFile Error:" +err.code + ' ' + err.message);
         // in case of an error: remove the output file and propagate the error
-        deleteFile(filename);
+        deleteFile(tempFilename);
         //throw err;
         return Promise.reject(err);
     } finally {

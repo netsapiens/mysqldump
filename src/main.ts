@@ -212,7 +212,10 @@ export default async function main(inputOptions: Options): Promise<DumpReturn> {
                 res.status = 'error';
                 return res;
             }
-            await compressFile(options.dumpToFile);
+            await compressFile(options.dumpToFile).catch(err => {
+                console.error(err.code + ' ' + err.message);
+                res.status = 'error';
+            });
         }
 
         return res;
