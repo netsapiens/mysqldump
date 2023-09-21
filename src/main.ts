@@ -212,6 +212,13 @@ export default async function main(inputOptions: Options): Promise<DumpReturn> {
                 res.status = 'error';
                 return res;
             }
+            const stat = fs.statSync(options.dumpToFile);
+            console.log('Requesting compression for '+options.dumpToFile+' File size: ' + stat.size);
+            if (stat.size == 0) {
+                console.log('File size is 0, not compressing. Considering this an error.');
+                res.status = 'error';
+                return res;
+            }
             await compressFile(options.dumpToFile).catch(err => {
                 console.error(err.code + ' ' + err.message);
                 res.status = 'error';

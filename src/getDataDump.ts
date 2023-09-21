@@ -194,11 +194,15 @@ async function getDataDump(
                         rowQueue = [];
                     }
 
-                    resolve();
+                    resolve(true);
                 });
                 query.on(
                     'error',
-                    /* istanbul ignore next */ err => reject(err),
+                    /* istanbul ignore next */ err => {
+                        console.log("mysqldump query error");
+                        console.error(err);
+                        reject(err)
+                    },
                 );
             });
 
@@ -233,7 +237,7 @@ async function getDataDump(
         // tidy up the file stream, making sure writes are 100% flushed before continuing
         await new Promise(resolve => {
             outFileStream.once('finish', () => {
-                resolve();
+                resolve(true);
             });
             outFileStream.end();
         });

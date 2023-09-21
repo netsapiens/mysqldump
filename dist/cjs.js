@@ -652,10 +652,14 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
                             saveChunk(insert);
                             rowQueue = [];
                         }
-                        resolve();
+                        resolve(true);
                     });
                     query.on('error', 
-                    /* istanbul ignore next */ err => reject(err));
+                    /* istanbul ignore next */ err => {
+                        console.log("mysqldump query error");
+                        console.error(err);
+                        reject(err);
+                    });
                 });
                 // update the table definition
                 retTables.push(deepmerge.all([
@@ -683,7 +687,7 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
             // tidy up the file stream, making sure writes are 100% flushed before continuing
             yield new Promise(resolve => {
                 outFileStream.once('finish', () => {
-                    resolve();
+                    resolve(true);
                 });
                 outFileStream.end();
             });
@@ -966,6 +970,13 @@ function main(inputOptions) {
             // compress output file
             if (options.dumpToFile && options.compressFile) {
                 if (!fs.existsSync(options.dumpToFile)) {
+                    res.status = 'error';
+                    return res;
+                }
+                const stat = fs.statSync(options.dumpToFile);
+                console.log('Requesting compression for ' + options.dumpToFile + ' File size: ' + stat.size);
+                if (stat.size == 0) {
+                    console.log('File size is 0, not compressing. Considering this an error.');
                     res.status = 'error';
                     return res;
                 }
