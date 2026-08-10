@@ -6,6 +6,7 @@ var sqlformatter = require('sql-formatter');
 var mysql = require('mysql2');
 var sqlstring = require('sqlstring');
 var zlib = require('zlib');
+var stream = require('stream');
 var mysql$1 = require('mysql2/promise');
 
 /*! *****************************************************************************
@@ -568,6 +569,15 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
                 encoding: 'utf8',
             })
             : null;
+        // Without an 'error' listener a failed write (ENOSPC, EIO, ...) emits an
+        // unhandled 'error' event, which takes the whole host process down.
+        // Capture them instead and surface the first one after teardown.
+        const outFileStreamErrors = [];
+        if (outFileStream) {
+            outFileStream.on('error', err => {
+                outFileStreamErrors.push(err);
+            });
+        }
         function saveChunk(str, inArray = true) {
             if (!Array.isArray(str)) {
                 str = [str];
@@ -679,18 +689,40 @@ function getDataDump(connectionOptions, options, tables, dumpToFile) {
                 yield executeSql(conn_pool, 'SET GLOBAL read_only = OFF');
                 yield executeSql(conn_pool, 'UNLOCK TABLES');
             }
-            conn_pool.end(); // close the connection pool 
+            conn_pool.end(); // close the connection pool
+            // Tear the write stream down in here, not after the try/finally: a
+            // fs.WriteStream holds its file descriptor until it is ended or
+            // destroyed, so any throw above (most commonly a rejected
+            // `query.on('error')`) used to strand one descriptor per failed dump
+            // for the whole remaining lifetime of the host process.
+            if (outFileStream) {
+                // tidy up the file stream, making sure writes are 100% flushed before continuing
+                yield new Promise(resolve => {
+                    // `destroyed` is absent from the WriteStream typings pinned
+                    // here, but is present at runtime on every supported Node.
+                    // A stream that is already gone will never emit 'close' again,
+                    // and calling end() on it would throw, so bail out early.
+                    const alreadyGone = outFileStream
+                        .destroyed === true;
+                    if (alreadyGone) {
+                        resolve(true);
+                        return;
+                    }
+                    // 'close' rather than 'finish' is what guarantees the descriptor
+                    // has been released. Destroy on error so a stream that can never
+                    // flush still reaches 'close' instead of hanging here forever.
+                    outFileStream.once('close', () => resolve(true));
+                    outFileStream.once('error', () => outFileStream.destroy());
+                    outFileStream.end();
+                });
+            }
         }
         // clean up our connections
         // await ((connection.end() as unknown) as Promise<void>);
-        if (outFileStream) {
-            // tidy up the file stream, making sure writes are 100% flushed before continuing
-            yield new Promise(resolve => {
-                outFileStream.once('finish', () => {
-                    resolve(true);
-                });
-                outFileStream.end();
-            });
+        if (outFileStreamErrors.length > 0) {
+            // The dump loop finished but the file we produced is incomplete. Fail
+            // loudly rather than let a truncated dump be treated as a good backup.
+            throw outFileStreamErrors[0];
         }
         return retTables;
     });
@@ -729,36 +761,22 @@ function compressFile(filename) {
             if (!fs.existsSync(tempFilename)) {
                 return Promise.reject(`File ${tempFilename} does not exist.`);
             }
-            let had_error = false;
             const read = fs.createReadStream(tempFilename);
-            read.on('error', (err) => {
-                console.log('error ' + err);
-                had_error = true;
-            });
-            yield new Promise(r => setTimeout(r, 20));
-            if (had_error) {
-                return Promise.reject(`Error reading ${tempFilename}.`);
-            }
             const zip = zlib.createGzip();
             const write = fs.createWriteStream(filename);
-            read.pipe(zip).pipe(write);
-            return new Promise((resolve, reject) => {
-                write.on('error', 
-                /* istanbul ignore next */ err => {
-                    // close the write stream and propagate the error
-                    write.end();
-                    reject(err);
-                });
-                write.on('finish', () => {
-                    resolve();
-                });
+            // `pipeline` destroys every stream in the chain as soon as any one of
+            // them fails, which a chain of `.pipe()` calls does not do. Previously
+            // only `write` had an error handler, so a read or gzip failure left all
+            // three descriptors open AND never settled this promise - the caller
+            // waited forever and the descriptors were never reclaimed.
+            yield new Promise((resolve, reject) => {
+                stream.pipeline(read, zip, write, err => err ? reject(err) : resolve(true));
             });
+            return;
         }
         catch (err) /* istanbul ignore next */ {
-            console.error("compressFile Error:" + err.code + ' ' + err.message);
-            // in case of an error: remove the output file and propagate the error
-            deleteFile(tempFilename);
-            //throw err;
+            console.error('compressFile Error: ' + (err && err.message ? err.message : err));
+            // propagate the error; the temp file is removed by the finally below
             return Promise.reject(err);
         }
         finally {
