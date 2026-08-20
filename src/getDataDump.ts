@@ -87,6 +87,16 @@ async function getDataDump(
           })
         : null;
 
+    // Without an 'error' listener a failed write (ENOSPC, EIO, ...) emits an
+    // unhandled 'error' event, which takes the whole host process down.
+    // Capture them instead and surface the first one after teardown.
+    const outFileStreamErrors: Array<Error> = [];
+    if (outFileStream) {
+        outFileStream.on('error', err => {
+            outFileStreamErrors.push(err);
+        });
+    }
+
     function saveChunk(str: string | Array<string>, inArray = true): void {
         if (!Array.isArray(str)) {
             str = [str];
@@ -227,20 +237,44 @@ async function getDataDump(
             await executeSql(conn_pool, 'UNLOCK TABLES');
         }
 
-        conn_pool.end(); // close the connection pool 
+        conn_pool.end(); // close the connection pool
+
+        // Tear the write stream down in here, not after the try/finally: a
+        // fs.WriteStream holds its file descriptor until it is ended or
+        // destroyed, so any throw above (most commonly a rejected
+        // `query.on('error')`) used to strand one descriptor per failed dump
+        // for the whole remaining lifetime of the host process.
+        if (outFileStream) {
+            // tidy up the file stream, making sure writes are 100% flushed before continuing
+            await new Promise(resolve => {
+                // `destroyed` is absent from the WriteStream typings pinned
+                // here, but is present at runtime on every supported Node.
+                // A stream that is already gone will never emit 'close' again,
+                // and calling end() on it would throw, so bail out early.
+                const alreadyGone =
+                    ((outFileStream as unknown) as { destroyed?: boolean })
+                        .destroyed === true;
+                if (alreadyGone) {
+                    resolve(true);
+                    return;
+                }
+                // 'close' rather than 'finish' is what guarantees the descriptor
+                // has been released. Destroy on error so a stream that can never
+                // flush still reaches 'close' instead of hanging here forever.
+                outFileStream.once('close', () => resolve(true));
+                outFileStream.once('error', () => outFileStream.destroy());
+                outFileStream.end();
+            });
+        }
     }
 
     // clean up our connections
    // await ((connection.end() as unknown) as Promise<void>);
 
-    if (outFileStream) {
-        // tidy up the file stream, making sure writes are 100% flushed before continuing
-        await new Promise(resolve => {
-            outFileStream.once('finish', () => {
-                resolve(true);
-            });
-            outFileStream.end();
-        });
+    if (outFileStreamErrors.length > 0) {
+        // The dump loop finished but the file we produced is incomplete. Fail
+        // loudly rather than let a truncated dump be treated as a good backup.
+        throw outFileStreamErrors[0];
     }
 
     return retTables;
